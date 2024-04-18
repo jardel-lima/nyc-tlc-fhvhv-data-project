@@ -39,7 +39,7 @@ def copy_file(raw_file_list):
     output_file_list = []
     for raw_file in raw_file_list:
         source_file_key = raw_file["Key"]
-        #print(f"COPYING RAW FILE:{source_file_key}")
+        print(f"COPYING RAW FILE:{source_file_key}")
         
         copy_source = {
           'Bucket': SOURCE_BUCKET,
@@ -47,9 +47,9 @@ def copy_file(raw_file_list):
         }
         
         target_file_key = f"{TARGET_FOLDER}/{source_file_key.split('/')[-1]}"
-        #bucket = s3.Bucket(RAW_BUCKET)
-        #bucket.copy(copy_source, target_file_key)
-        #print(f"FILE COPIED TO: {RAW_BUCKET}/{target_file_key}")
+        bucket = s3.Bucket(RAW_BUCKET)
+        bucket.copy(copy_source, target_file_key)
+        print(f"FILE COPIED TO: {RAW_BUCKET}/{target_file_key}")
         output_file_list.append(f"{RAW_BUCKET}/{target_file_key}")
     
     return output_file_list

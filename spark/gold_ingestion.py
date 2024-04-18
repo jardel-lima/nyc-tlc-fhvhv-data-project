@@ -18,7 +18,7 @@ def get_secret(secret_name:str= "grupob/rds/credentials"):
     region_name = "us-east-1"
 
     # Create a Secrets Manager client
-    """
+    
     session = boto3.session.Session()
     client = session.client(
         service_name='secretsmanager',
@@ -35,10 +35,8 @@ def get_secret(secret_name:str= "grupob/rds/credentials"):
         raise e
 
     secret = get_secret_value_response['SecretString']
-    """
-    return {"host":"grupo-b-01.cnyga06a0pgl.us-east-1.rds.amazonaws.com",
-            "username":"grupob",
-            "password":"grupob001"}
+    
+    return secret
 
 def init_spark(app_name:str="SPARK APPLICATION"):
     return SparkSession.builder \
