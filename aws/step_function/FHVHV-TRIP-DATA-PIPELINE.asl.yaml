@@ -1,0 +1,129 @@
+Comment: An example of the Amazon States Language for running jobs on Amazon EMR
+StartAt: Create EMR cluster
+States:
+  Create EMR cluster:
+    Type: Task
+    Resource: arn:aws:states:::elasticmapreduce:createCluster.sync
+    Parameters:
+      Name: FHVHV DATA PIPELINE
+      VisibleToAllUsers: true
+      ReleaseLabel: emr-6.15.0
+      Applications:
+        - Name: Spark
+      ServiceRole: EMR_DefaultRole
+      JobFlowRole: EMR_EC2_DefaultRole
+      LogUri: s3://aws-logs-211125553029-us-east-1/elasticmapreduce/
+      Configurations:
+        - Classification: spark-hive-site
+          Properties:
+            hive.metastore.client.factory.class: >-
+              com.amazonaws.glue.catalog.metastore.AWSGlueDataCatalogHiveClientFactory
+      BootstrapActions:
+        - Name: install mysql driver
+          ScriptBootstrapAction:
+            Path: s3://edb015-group-b-codes/scripts/install_mysql_driver.sh
+      Instances:
+        KeepJobFlowAliveWhenNoSteps: true
+        InstanceFleets:
+          - Name: MyMasterFleet
+            InstanceFleetType: MASTER
+            TargetOnDemandCapacity: 1
+            InstanceTypeConfigs:
+              - InstanceType: m5.xlarge
+          - Name: MyCoreFleet
+            InstanceFleetType: CORE
+            TargetOnDemandCapacity: 1
+            InstanceTypeConfigs:
+              - InstanceType: m5.xlarge
+    ResultPath: $.cluster
+    Next: Map
+  Map:
+    Type: Map
+    ItemProcessor:
+      ProcessorConfig:
+        Mode: INLINE
+      StartAt: CHOICE BRONZE
+      States:
+        CHOICE BRONZE:
+          Type: Choice
+          Choices:
+            - Variable: $.item.skip_bronze
+              BooleanEquals: true
+              Next: CHOICE SILVER
+          Default: BRONZE INGESTION
+        CHOICE SILVER:
+          Type: Choice
+          Choices:
+            - Variable: $.item.skip_silver
+              BooleanEquals: true
+              Next: CHOICE GOLD
+          Default: SILVER INGESTION
+        CHOICE GOLD:
+          Type: Choice
+          Choices:
+            - Variable: $.item.skip_gold
+              BooleanEquals: true
+              Next: Success
+          Default: GOLD INGESTION
+        Success:
+          Type: Succeed
+        GOLD INGESTION:
+          Type: Task
+          Resource: arn:aws:states:::elasticmapreduce:addStep.sync
+          Parameters:
+            ClusterId.$: $.cluster.ClusterId
+            Step:
+              Name: GOLD INGESTION
+              ActionOnFailure: TERMINATE_CLUSTER
+              HadoopJarStep:
+                Jar: command-runner.jar
+                Args.$: >-
+                  States.Array('spark-submit','--deploy-mode','cluster','--jars','s3://edb015-group-b-codes/jars/mysql-connector-j-8.0.33.jar','s3://edb015-group-b-codes/gold_ingestion.py',$.item.silver_table,$.item.gold_table,$.item.year_month_filter,$.item.write_mode,$.item.save_to_db,$.item.secret_name)
+          ResultPath: $.secondStep
+          End: true
+        SILVER INGESTION:
+          Type: Task
+          Resource: arn:aws:states:::elasticmapreduce:addStep.sync
+          Parameters:
+            ClusterId.$: $.cluster.ClusterId
+            Step:
+              Name: SILVER INGESTION
+              ActionOnFailure: TERMINATE_CLUSTER
+              HadoopJarStep:
+                Jar: command-runner.jar
+                Args.$: >-
+                  States.Array('spark-submit','--deploy-mode','cluster','s3://edb015-group-b-codes/silver_ingestion.py',$.item.bronze_table,$.item.silver_table,$.item.load_date_filter,$.item.year_month_filter,$.item.write_mode)
+          ResultPath: $.secondStep
+          Next: CHOICE GOLD
+        BRONZE INGESTION:
+          Type: Task
+          Resource: arn:aws:states:::elasticmapreduce:addStep.sync
+          Parameters:
+            ClusterId.$: $.cluster.ClusterId
+            Step:
+              Name: BRONZE INGESTION
+              ActionOnFailure: TERMINATE_CLUSTER
+              HadoopJarStep:
+                Jar: command-runner.jar
+                Args.$: >-
+                  States.Array('spark-submit','--deploy-mode','cluster','s3://edb015-group-b-codes/bronze_ingestion.py',$.item.file_name,$.item.bronze_table,$.item.write_mode)
+          ResultPath: $.firstStep
+          Retry:
+            - ErrorEquals:
+                - States.ALL
+              BackoffRate: 2
+              IntervalSeconds: 1
+              MaxAttempts: 3
+          Next: CHOICE SILVER
+    Next: Terminate Cluster
+    ItemsPath: $.to_ingest
+    ItemSelector:
+      item.$: $$.Map.Item.Value
+      cluster.$: $.cluster
+    ResultPath: $.cluster
+  Terminate Cluster:
+    Type: Task
+    Resource: arn:aws:states:::elasticmapreduce:terminateCluster
+    Parameters:
+      ClusterId.$: $.cluster[0].cluster.Cluster.Id
+    End: true
