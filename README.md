@@ -15,10 +15,14 @@ Prof.:
 ### GRUPO B
 Alunos:
 
- - Jardel Ribeiro de Lima
+ - Jardel Ribeiro de LimaÞ
  - Marcos Paulo Ferreira Rodrigues
  - Marcus Paulo Marques de Souza
  - Renata Larios Alcantara de Freitas
  - Rodrigo Duarte Linares
+
+### Arquitetura
+
+![image](/img/architecture_design.jpeg)
 
 
